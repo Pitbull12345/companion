@@ -35,6 +35,10 @@
               pkgs.python3Packages.setuptools
             ];
 
+            dependencies = [
+              pkgs.python3Packages.sounddevice
+            ];
+
             nativeCheckInputs = [
               pkgs.python3Packages.pytestCheckHook
             ];
@@ -59,6 +63,7 @@
             packages = [
               pkgs.python3
               pkgs.python3Packages.pytest
+              pkgs.python3Packages.sounddevice
             ];
           };
         });
