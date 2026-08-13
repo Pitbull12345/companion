@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "==> Python tests"
+pytest -q -m "not hardware"
+
+echo "==> Python compile check"
+python -m compileall -q src
+
+echo "==> Nix checks"
+nix flake check
+
+echo "==> All checks passed"
