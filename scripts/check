@@ -1,14 +1,13 @@
-
-For `scripts/check`:
-
-```bash
 #!/usr/bin/env bash
 set -euo pipefail
 
-pytest tests/unit -q
-pytest tests/contract -q
-pytest tests/integration -q
+echo "==> Python tests"
+pytest -q -m "not hardware"
 
+echo "==> Python compile check"
 python -m compileall -q src
 
+echo "==> Nix checks"
 nix flake check
+
+echo "==> All checks passed"
