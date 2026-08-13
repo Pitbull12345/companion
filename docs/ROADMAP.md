@@ -1,5 +1,5 @@
 0.1  Nix Python package                     DONE
-0.2  Provider-neutral runtime interfaces
+0.2  Provider-neutral runtime interfaces     DONE
 0.3  Real microphone AudioSource
 0.4  Silero VAD
 0.5  faster-whisper STT
