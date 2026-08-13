@@ -36,6 +36,7 @@
             ];
 
             dependencies = [
+              pkgs.python3Packages.silero-vad
               pkgs.python3Packages.sounddevice
             ];
 
@@ -60,6 +61,7 @@
 
           python = pkgs.python3.withPackages (ps: [
             ps.pytest
+            ps.silero-vad
             ps.sounddevice
           ]);
         in
