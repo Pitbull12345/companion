@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Re-enter this script inside the Nix development environment if needed.
+if ! command -v pytest >/dev/null 2>&1; then
+    echo "==> Entering Nix development environment"
+    exec nix develop -c ./scripts/check
+fi
+
 echo "==> Python tests"
 pytest -q -m "not hardware"
 
