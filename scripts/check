@@ -13,6 +13,9 @@ pytest -q -m "not hardware"
 echo "==> Python compile check"
 python -m compileall -q src
 
+echo "==> Runtime dependency imports"
+python -c "import sounddevice"
+
 echo "==> Nix checks"
 nix flake check
 

@@ -57,13 +57,16 @@
           pkgs = import nixpkgs {
             inherit system;
           };
+
+          python = pkgs.python3.withPackages (ps: [
+            ps.pytest
+            ps.sounddevice
+          ]);
         in
         {
           default = pkgs.mkShell {
             packages = [
-              pkgs.python3
-              pkgs.python3Packages.pytest
-              pkgs.python3Packages.sounddevice
+              python
             ];
           };
         });
