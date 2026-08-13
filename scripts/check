@@ -1,0 +1,14 @@
+
+For `scripts/check`:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+pytest tests/unit -q
+pytest tests/contract -q
+pytest tests/integration -q
+
+python -m compileall -q src
+
+nix flake check
