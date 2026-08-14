@@ -38,6 +38,7 @@
             dependencies = [
               pkgs.python3Packages.faster-whisper
               pkgs.python3Packages.numpy
+              pkgs.python3Packages.ollama
               pkgs.python3Packages.silero-vad
               pkgs.python3Packages.sounddevice
             ];
@@ -65,6 +66,7 @@
             ps.pytest
             ps.faster-whisper
             ps.numpy
+            ps.ollama
             ps.silero-vad
             ps.sounddevice
           ]);
