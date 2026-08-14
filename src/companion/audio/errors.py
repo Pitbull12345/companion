@@ -4,3 +4,7 @@ class AudioError(RuntimeError):
 
 class VADError(AudioError):
     """Voice activity detection could not complete an operation."""
+
+
+class STTError(AudioError):
+    """Speech transcription could not complete an operation."""
