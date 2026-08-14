@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import os
 import sys
 from collections.abc import Sequence
 from typing import Protocol
@@ -60,6 +61,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--ollama-timeout",
         type=float,
         help="Optional Ollama request timeout in seconds",
+    )
+    parser.add_argument(
+        "--openrouter-base-url",
+        default="https://openrouter.ai",
+        help="OpenRouter API base URL (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--openrouter-timeout",
+        type=float,
+        default=30.0,
+        help="OpenRouter request timeout in seconds (default: %(default)s)",
     )
     parser.add_argument(
         "--piper-model",
@@ -150,6 +162,9 @@ def build_application(arguments: argparse.Namespace) -> InteractiveTurnLoop | Ch
             ollama_host=arguments.ollama_host,
             ollama_timeout=arguments.ollama_timeout,
             piper_voice_root=arguments.piper_voice_root,
+            openrouter_api_key=os.environ.get("OPENROUTER_API_KEY"),
+            openrouter_base_url=arguments.openrouter_base_url,
+            openrouter_timeout=arguments.openrouter_timeout,
         ),
         on_listening=_show_listening,
         on_turn_completed=_show_turn,

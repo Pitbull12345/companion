@@ -43,6 +43,7 @@
 
             dependencies = [
               pkgs.python3Packages.faster-whisper
+              pkgs.python3Packages.httpx
               pkgs.python3Packages.numpy
               pkgs.python3Packages.ollama
               piperTts
@@ -86,6 +87,7 @@
           python = pkgs.python3.withPackages (ps: [
             ps.pytest
             ps.faster-whisper
+            ps.httpx
             ps.numpy
             ps.ollama
             ps.silero-vad
