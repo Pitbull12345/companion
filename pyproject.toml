@@ -7,7 +7,7 @@ name = "companion"
 version = "0.1.0"
 description = "Local-first speech companion"
 requires-python = ">=3.11"
-dependencies = ["silero-vad", "sounddevice"]
+dependencies = ["faster-whisper", "numpy", "silero-vad", "sounddevice"]
 
 [project.scripts]
 companion = "companion.cli:main"

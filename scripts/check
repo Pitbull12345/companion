@@ -14,7 +14,7 @@ echo "==> Python compile check"
 python -m compileall -q src
 
 echo "==> Runtime dependency imports"
-python -c "import silero_vad; import sounddevice"
+python -c "import faster_whisper; import numpy; import silero_vad; import sounddevice"
 
 echo "==> Nix checks"
 nix flake check
