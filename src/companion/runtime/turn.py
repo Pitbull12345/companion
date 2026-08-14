@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from enum import Enum
 
 
@@ -25,8 +26,12 @@ class TurnController:
         TurnState.STOPPED: set(),
     }
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        on_transition: Callable[[TurnState], None] | None = None,
+    ) -> None:
         self._state = TurnState.LISTENING
+        self._on_transition = on_transition
 
     @property
     def state(self) -> TurnState:
@@ -36,3 +41,5 @@ class TurnController:
         if state not in self._ALLOWED_TRANSITIONS[self._state]:
             raise InvalidTurnTransition(self._state, state)
         self._state = state
+        if self._on_transition is not None:
+            self._on_transition(state)

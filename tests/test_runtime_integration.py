@@ -67,7 +67,8 @@ def test_complete_injected_speech_turn() -> None:
     llm = FakeLLM()
     tts = FakeTTS()
     audio_output = FakeAudioOutput()
-    turns = TurnController()
+    transitions: list[TurnState] = []
+    turns = TurnController(on_transition=transitions.append)
     runtime = AssistantRuntime(
         audio_source=source,
         vad=FakeVAD(),
@@ -98,4 +99,10 @@ def test_complete_injected_speech_turn() -> None:
         Message(MessageRole.ASSISTANT, "You asked a question."),
     )
     assert turns.state is TurnState.LISTENING
+    assert transitions == [
+        TurnState.TRANSCRIBING,
+        TurnState.THINKING,
+        TurnState.SPEAKING,
+        TurnState.LISTENING,
+    ]
     assert source.frames == []
