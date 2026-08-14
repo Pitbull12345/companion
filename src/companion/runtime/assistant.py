@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from companion.agent.context import ContextBuilder
 from companion.agent.conversation import ConversationManager
-from companion.audio.interfaces import AudioSource, STTProvider, VADProvider
+from companion.audio.interfaces import AudioOutput, AudioSource, STTProvider, VADProvider
 from companion.llm.router import LLMRouter
 from companion.runtime.turn import TurnController, TurnState
 from companion.tts.interfaces import TTSProvider
@@ -23,6 +23,7 @@ class AssistantRuntime:
         context_builder: ContextBuilder,
         llm: LLMRouter,
         tts: TTSProvider,
+        audio_output: AudioOutput,
         conversation: ConversationManager,
         turn_controller: TurnController,
     ) -> None:
@@ -32,6 +33,7 @@ class AssistantRuntime:
         self._context_builder = context_builder
         self._llm = llm
         self._tts = tts
+        self._audio_output = audio_output
         self._conversation = conversation
         self._turn_controller = turn_controller
 
@@ -43,7 +45,8 @@ class AssistantRuntime:
         context = await self._context_builder.build(transcript)
         response = await self._llm.generate(context)
         self._turn_controller.transition_to(TurnState.SPEAKING)
-        await self._tts.speak(response)
+        speech = await self._tts.synthesize(response)
+        await self._audio_output.play(speech)
         self._conversation.add_turn(transcript, response)
         self._turn_controller.transition_to(TurnState.LISTENING)
         return TurnResult(transcript=transcript, response=response)

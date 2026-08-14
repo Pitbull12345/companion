@@ -1,5 +1,7 @@
 from typing import Protocol
 
+from companion.audio.interfaces import AudioClip
+
 
 class TTSProvider(Protocol):
-    async def speak(self, text: str) -> None: ...
+    async def synthesize(self, text: str) -> AudioClip: ...
