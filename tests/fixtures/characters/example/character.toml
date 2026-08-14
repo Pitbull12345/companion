@@ -1,0 +1,28 @@
+id = "example"
+name = "Example"
+description = "Example local-first Companion character"
+system_prompt = "You are Example, a concise desktop companion."
+
+[llm]
+provider = "ollama"
+model = "llama3.2:3b"
+
+[llm.settings]
+temperature = 0.8
+
+[tts]
+provider = "piper"
+voice = "en_US-lessac-medium"
+
+[tts.settings]
+speed = 1.0
+
+[visuals]
+idle = "visuals/idle.png"
+listening = "visuals/listening.png"
+thinking = "visuals/thinking.png"
+speaking = "visuals/speaking.png"
+
+[sounds]
+startup = "sounds/startup.wav"
+laugh = "sounds/laugh.wav"
