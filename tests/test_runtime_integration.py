@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from companion.agent.context import ContextBuilder
 from companion.agent.conversation import ConversationManager
 from companion.agent.messages import Message, MessageRole
-from companion.audio.interfaces import AudioFrame, AudioSegment, AudioSource
+from companion.audio.interfaces import AudioClip, AudioFrame, AudioSegment, AudioSource
 from companion.llm.router import LLMRouter
 from companion.memory.manager import MemoryManager
 from companion.runtime.assistant import AssistantRuntime, TurnResult
@@ -44,10 +44,19 @@ class FakeLLM:
 
 class FakeTTS:
     def __init__(self) -> None:
-        self.spoken: list[str] = []
+        self.synthesized: list[str] = []
 
-    async def speak(self, text: str) -> None:
-        self.spoken.append(text)
+    async def synthesize(self, text: str) -> AudioClip:
+        self.synthesized.append(text)
+        return AudioClip(b"\x01\x00", 22_050, 1, 2)
+
+
+class FakeAudioOutput:
+    def __init__(self) -> None:
+        self.played: list[AudioClip] = []
+
+    async def play(self, audio: AudioClip) -> None:
+        self.played.append(audio)
 
 
 def test_complete_injected_speech_turn() -> None:
@@ -57,6 +66,7 @@ def test_complete_injected_speech_turn() -> None:
     conversation.add_turn("Previous question", "Previous answer")
     llm = FakeLLM()
     tts = FakeTTS()
+    audio_output = FakeAudioOutput()
     turns = TurnController()
     runtime = AssistantRuntime(
         audio_source=source,
@@ -67,6 +77,7 @@ def test_complete_injected_speech_turn() -> None:
         ),
         llm=LLMRouter(llm),
         tts=tts,
+        audio_output=audio_output,
         conversation=conversation,
         turn_controller=turns,
     )
@@ -80,7 +91,8 @@ def test_complete_injected_speech_turn() -> None:
         Message(MessageRole.ASSISTANT, "Previous answer"),
         Message(MessageRole.USER, "What did I say?"),
     )
-    assert tts.spoken == ["You asked a question."]
+    assert tts.synthesized == ["You asked a question."]
+    assert audio_output.played == [AudioClip(b"\x01\x00", 22_050, 1, 2)]
     assert conversation.history[-2:] == (
         Message(MessageRole.USER, "What did I say?"),
         Message(MessageRole.ASSISTANT, "You asked a question."),

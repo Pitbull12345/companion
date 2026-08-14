@@ -8,3 +8,7 @@ class VADError(AudioError):
 
 class STTError(AudioError):
     """Speech transcription could not complete an operation."""
+
+
+class PlaybackError(AudioError):
+    """Audio output could not play an audio clip."""

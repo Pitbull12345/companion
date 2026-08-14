@@ -22,6 +22,12 @@
           pkgs = import nixpkgs {
             inherit system;
           };
+          piperTts = pkgs.piper-tts.override {
+            withAlignment = false;
+            withHTTP = false;
+            withTrain = false;
+          };
+          pipewireRuntime = pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.pipewire ];
         in
         {
           default = pkgs.python3Packages.buildPythonApplication {
@@ -39,12 +45,21 @@
               pkgs.python3Packages.faster-whisper
               pkgs.python3Packages.numpy
               pkgs.python3Packages.ollama
+              piperTts
               pkgs.python3Packages.silero-vad
               pkgs.python3Packages.sounddevice
+              pkgs.python3Packages.soxr
             ];
 
             nativeCheckInputs = [
               pkgs.python3Packages.pytestCheckHook
+            ];
+
+            makeWrapperArgs = pkgs.lib.optionals pkgs.stdenv.isLinux [
+              "--prefix"
+              "PATH"
+              ":"
+              (pkgs.lib.makeBinPath pipewireRuntime)
             ];
           };
         });
@@ -61,6 +76,12 @@
           pkgs = import nixpkgs {
             inherit system;
           };
+          piperTts = pkgs.piper-tts.override {
+            withAlignment = false;
+            withHTTP = false;
+            withTrain = false;
+          };
+          pipewireRuntime = pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.pipewire ];
 
           python = pkgs.python3.withPackages (ps: [
             ps.pytest
@@ -69,13 +90,15 @@
             ps.ollama
             ps.silero-vad
             ps.sounddevice
+            ps.soxr
           ]);
         in
         {
           default = pkgs.mkShell {
             packages = [
               python
-            ];
+              piperTts
+            ] ++ pipewireRuntime;
           };
         });
 
