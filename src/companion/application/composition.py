@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path, PurePath, PureWindowsPath
+from typing import cast
 
 from companion.agent.context import ContextBuilder
 from companion.agent.conversation import ConversationManager
@@ -13,10 +14,11 @@ from companion.application.errors import CompositionError
 from companion.application.registry import LLMProviderRegistry, TTSProviderRegistry
 from companion.character.definition import CharacterDefinition, LLMPreference, TTSPreference
 from companion.llm.ollama import OllamaLLMProvider
+from companion.llm.openrouter import OpenRouterLLMProvider
 from companion.llm.router import LLMRouter
 from companion.memory.manager import MemoryManager
 from companion.runtime.assistant import AssistantRuntime, TurnResult
-from companion.runtime.interactive import InteractiveTurnLoop
+from companion.runtime.interactive import AsyncResource, InteractiveTurnLoop
 from companion.runtime.turn import TurnController, TurnState
 from companion.tts.piper import PiperTTSProvider
 
@@ -31,6 +33,9 @@ class ApplicationConfig:
     ollama_host: str = "http://localhost:11434"
     ollama_timeout: float | None = None
     piper_voice_root: Path = field(default_factory=default_piper_voice_root)
+    openrouter_api_key: str | None = field(default=None, repr=False)
+    openrouter_base_url: str = "https://openrouter.ai"
+    openrouter_timeout: float = 30.0
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "piper_voice_root", Path(self.piper_voice_root))
@@ -93,6 +98,22 @@ def _build_ollama(preference: LLMPreference, config: ApplicationConfig):
     )
 
 
+def _build_openrouter(preference: LLMPreference, config: ApplicationConfig):
+    _reject_settings("OpenRouter", preference.settings)
+    if not config.openrouter_api_key:
+        raise CompositionError("OPENROUTER_API_KEY is required for OpenRouter")
+    if not config.openrouter_base_url:
+        raise CompositionError("OpenRouter base URL is required")
+    if config.openrouter_timeout <= 0:
+        raise CompositionError("OpenRouter timeout must be positive")
+    return OpenRouterLLMProvider(
+        preference.model,
+        config.openrouter_api_key,
+        base_url=config.openrouter_base_url,
+        timeout=config.openrouter_timeout,
+    )
+
+
 def _build_piper(preference: TTSPreference, config: ApplicationConfig):
     _reject_settings("Piper", preference.settings)
     voice = PiperVoiceResolver(config.piper_voice_root).resolve(preference.voice)
@@ -105,6 +126,7 @@ def _build_piper(preference: TTSPreference, config: ApplicationConfig):
 def create_default_llm_registry() -> LLMProviderRegistry[ApplicationConfig]:
     registry: LLMProviderRegistry[ApplicationConfig] = LLMProviderRegistry()
     registry.register("ollama", _build_ollama)
+    registry.register("openrouter", _build_openrouter)
     return registry
 
 
@@ -176,9 +198,12 @@ def compose_character_runtime(
         conversation=conversation,
         turn_controller=controller,
     )
+    owned_resources: list[AsyncResource] = [source]
+    if callable(getattr(llm, "close", None)):
+        owned_resources.append(cast(AsyncResource, llm))
     loop = InteractiveTurnLoop(
         runtime,
-        resources=(source,),
+        resources=owned_resources,
         on_listening=on_listening,
         on_turn_completed=on_turn_completed,
     )

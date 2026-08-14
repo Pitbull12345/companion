@@ -74,7 +74,7 @@ def test_registries_are_explicit_local_and_forward_context(tmp_path: Path) -> No
         LLMProviderRegistry().create(
             LLMPreference("some.module.Class", "x"), config
         )
-    assert len(create_default_llm_registry()._factories) == 1
+    assert len(create_default_llm_registry()._factories) == 2
     assert len(create_default_tts_registry()._factories) == 1
 
 
@@ -216,6 +216,102 @@ def test_default_factories_reject_unsupported_settings_before_runtime(tmp_path: 
     )
     with pytest.raises(CompositionError, match="unsupported Ollama"):
         compose_character_runtime(character, ApplicationConfig("w"))
+
+
+def test_default_registry_selects_openrouter_from_machine_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured = []
+    provider = FakeLLM()
+
+    def fake_openrouter(model, api_key, **options):
+        captured.append((model, api_key, options))
+        return provider
+
+    monkeypatch.setattr(
+        "companion.application.composition.OpenRouterLLMProvider", fake_openrouter
+    )
+    config = ApplicationConfig(
+        "whisper",
+        openrouter_api_key="machine-secret",
+        openrouter_base_url="https://router.test",
+        openrouter_timeout=18.0,
+    )
+
+    selected = create_default_llm_registry().create(
+        LLMPreference("openrouter", "vendor/model"), config
+    )
+
+    assert selected is provider
+    assert captured == [
+        (
+            "vendor/model",
+            "machine-secret",
+            {"base_url": "https://router.test", "timeout": 18.0},
+        )
+    ]
+    assert "machine-secret" not in repr(config)
+
+
+def test_openrouter_requires_key_but_ollama_does_not(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ollama = FakeLLM()
+    monkeypatch.setattr(
+        "companion.application.composition.OllamaLLMProvider",
+        lambda model, **options: ollama,
+    )
+    registry = create_default_llm_registry()
+    config = ApplicationConfig("whisper")
+
+    with pytest.raises(CompositionError, match="OPENROUTER_API_KEY is required"):
+        registry.create(LLMPreference("openrouter", "vendor/model"), config)
+    assert registry.create(LLMPreference("ollama", "local-model"), config) is ollama
+
+
+def test_openrouter_settings_are_rejected_explicitly() -> None:
+    with pytest.raises(CompositionError, match="unsupported OpenRouter"):
+        create_default_llm_registry().create(
+            LLMPreference("openrouter", "model", {"temperature": 0.5}),
+            ApplicationConfig("whisper", openrouter_api_key="key"),
+        )
+
+
+def test_later_composition_failure_does_not_allocate_openrouter_client(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client_creations = 0
+
+    def create_client(**options):
+        nonlocal client_creations
+        client_creations += 1
+        raise AssertionError("composition must not allocate an HTTP client")
+
+    monkeypatch.setattr(
+        "companion.llm.openrouter.httpx.AsyncClient", create_client
+    )
+    tts_registry: TTSProviderRegistry[ApplicationConfig] = TTSProviderRegistry()
+
+    def fail_later(preference, config):
+        raise CompositionError("later TTS composition failure")
+
+    tts_registry.register("failing-tts", fail_later)
+    character = CharacterDefinition(
+        id="remote",
+        name="Remote",
+        system_prompt="Prompt",
+        package_root=tmp_path,
+        llm=LLMPreference("openrouter", "vendor/model"),
+        tts=TTSPreference("failing-tts", "voice"),
+    )
+
+    with pytest.raises(CompositionError, match="later TTS composition failure"):
+        compose_character_runtime(
+            character,
+            ApplicationConfig("whisper", openrouter_api_key="secret"),
+            tts_registry=tts_registry,
+        )
+    assert client_creations == 0
 
 
 def test_manifest_flows_through_registries_into_composition(tmp_path: Path) -> None:

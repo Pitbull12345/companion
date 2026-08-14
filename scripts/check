@@ -14,7 +14,7 @@ echo "==> Python compile check"
 python -m compileall -q src
 
 echo "==> Runtime dependency imports"
-python -c "import faster_whisper; import numpy; import ollama; import piper; import silero_vad; import sounddevice; import soxr"
+python -c "import faster_whisper; import httpx; import numpy; import ollama; import piper; import silero_vad; import sounddevice; import soxr"
 if [[ "$(uname -s)" == "Linux" ]]; then
     command -v pw-cat >/dev/null
 fi
