@@ -12,6 +12,7 @@ dependencies = ["faster-whisper", "numpy", "ollama", "piper-tts", "silero-vad", 
 [project.scripts]
 companion = "companion.cli:main"
 companion-piper-diagnostic = "companion.tts.diagnostic:main"
+companion-pipewire-source-diagnostic = "companion.audio.pipewire_source_diagnostic:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
