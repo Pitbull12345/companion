@@ -50,11 +50,28 @@
               pkgs.python3Packages.silero-vad
               pkgs.python3Packages.sounddevice
               pkgs.python3Packages.soxr
+              pkgs.python3Packages.pygobject3
+              pkgs.gtk4
+            ];
+
+            nativeBuildInputs = [
+              pkgs.wrapGAppsHook4
             ];
 
             nativeCheckInputs = [
               pkgs.python3Packages.pytestCheckHook
             ];
+
+            preCheck = ''
+              export GI_TYPELIB_PATH=${pkgs.lib.makeSearchPath "lib/girepository-1.0" [
+                pkgs.gdk-pixbuf
+                pkgs.gobject-introspection
+                pkgs.graphene
+                pkgs.gtk4
+                pkgs.harfbuzz
+                pkgs.pango.out
+              ]}:''${GI_TYPELIB_PATH:-}
+            '';
 
             makeWrapperArgs = pkgs.lib.optionals pkgs.stdenv.isLinux [
               "--prefix"
@@ -69,6 +86,10 @@
         default = {
           type = "app";
           program = "${self.packages.${system}.default}/bin/companion";
+        };
+        gui = {
+          type = "app";
+          program = "${self.packages.${system}.default}/bin/companion-gui";
         };
       });
 
@@ -93,13 +114,24 @@
             ps.silero-vad
             ps.sounddevice
             ps.soxr
+            ps.pygobject3
           ]);
         in
         {
           default = pkgs.mkShell {
+            GI_TYPELIB_PATH = pkgs.lib.makeSearchPath "lib/girepository-1.0" [
+              pkgs.gdk-pixbuf
+              pkgs.gobject-introspection
+              pkgs.graphene
+              pkgs.gtk4
+              pkgs.harfbuzz
+              pkgs.pango.out
+            ];
             packages = [
               python
               piperTts
+              pkgs.gtk4
+              pkgs.gobject-introspection
             ] ++ pipewireRuntime;
           };
         });
