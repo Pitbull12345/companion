@@ -75,7 +75,7 @@ def test_registries_are_explicit_local_and_forward_context(tmp_path: Path) -> No
             LLMPreference("some.module.Class", "x"), config
         )
     assert len(create_default_llm_registry()._factories) == 2
-    assert len(create_default_tts_registry()._factories) == 1
+    assert len(create_default_tts_registry()._factories) == 2
 
 
 def test_piper_voice_resolution_is_rooted_and_optional_config(tmp_path: Path) -> None:
@@ -310,6 +310,122 @@ def test_later_composition_failure_does_not_allocate_openrouter_client(
             character,
             ApplicationConfig("whisper", openrouter_api_key="secret"),
             tts_registry=tts_registry,
+        )
+    assert client_creations == 0
+
+
+def test_default_registry_selects_elevenlabs_from_machine_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured = []
+    provider = FakeTTS()
+
+    def fake_elevenlabs(voice, api_key, **options):
+        captured.append((voice, api_key, options))
+        return provider
+
+    monkeypatch.setattr(
+        "companion.application.composition.ElevenLabsTTSProvider", fake_elevenlabs
+    )
+    config = ApplicationConfig(
+        "whisper",
+        elevenlabs_api_key="machine-secret",
+        elevenlabs_base_url="https://eleven.test",
+        elevenlabs_timeout=14.0,
+        elevenlabs_model_id="test-model",
+        elevenlabs_output_format="pcm_16000",
+    )
+
+    selected = create_default_tts_registry().create(
+        TTSPreference("elevenlabs", "character-voice"), config
+    )
+
+    assert selected is provider
+    assert captured == [
+        (
+            "character-voice",
+            "machine-secret",
+            {
+                "model_id": "test-model",
+                "base_url": "https://eleven.test",
+                "timeout": 14.0,
+                "output_format": "pcm_16000",
+            },
+        )
+    ]
+    assert "machine-secret" not in repr(config)
+
+
+def test_elevenlabs_requires_key_but_piper_does_not(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    piper = FakeTTS()
+    monkeypatch.setattr(
+        "companion.application.composition.PiperTTSProvider",
+        lambda model_path, **options: piper,
+    )
+    (tmp_path / "voice.onnx").write_bytes(b"model")
+    registry = create_default_tts_registry()
+    config = ApplicationConfig("whisper", piper_voice_root=tmp_path)
+
+    with pytest.raises(CompositionError, match="ELEVENLABS_API_KEY is required"):
+        registry.create(TTSPreference("elevenlabs", "remote-voice"), config)
+    assert registry.create(TTSPreference("piper", "voice"), config) is piper
+
+
+def test_elevenlabs_rejects_settings_and_encoded_output() -> None:
+    with pytest.raises(CompositionError, match="unsupported ElevenLabs character"):
+        create_default_tts_registry().create(
+            TTSPreference("elevenlabs", "voice", {"stability": 0.5}),
+            ApplicationConfig("whisper", elevenlabs_api_key="key"),
+        )
+    with pytest.raises(CompositionError, match="unsupported ElevenLabs PCM"):
+        create_default_tts_registry().create(
+            TTSPreference("elevenlabs", "voice"),
+            ApplicationConfig(
+                "whisper",
+                elevenlabs_api_key="key",
+                elevenlabs_output_format="mp3_44100_128",
+            ),
+        )
+
+
+def test_later_composition_failure_does_not_allocate_elevenlabs_client(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client_creations = 0
+
+    def create_client(**options):
+        nonlocal client_creations
+        client_creations += 1
+        raise AssertionError("composition must not allocate an HTTP client")
+
+    monkeypatch.setattr(
+        "companion.tts.elevenlabs.httpx.AsyncClient", create_client
+    )
+    llm_registry: LLMProviderRegistry[ApplicationConfig] = LLMProviderRegistry()
+    llm_registry.register("fake-llm", lambda preference, config: FakeLLM())
+    character = CharacterDefinition(
+        id="remote",
+        name="Remote",
+        system_prompt="Prompt",
+        package_root=tmp_path,
+        llm=LLMPreference("fake-llm", "model"),
+        tts=TTSPreference("elevenlabs", "voice"),
+    )
+    factories = CompositionFactories(
+        audio_source=lambda: (_ for _ in ()).throw(AssertionError("not reached")),
+        vad=lambda: (_ for _ in ()).throw(CompositionError("later VAD failure")),
+        stt=lambda path: None,
+        audio_output=lambda: None,
+    )
+
+    with pytest.raises(CompositionError, match="later VAD failure"):
+        compose_character_runtime(
+            character,
+            ApplicationConfig("whisper", elevenlabs_api_key="secret"),
+            llm_registry=llm_registry,
+            factories=factories,
         )
     assert client_creations == 0
 

@@ -21,6 +21,7 @@ from companion.runtime.assistant import AssistantRuntime, TurnResult
 from companion.runtime.interactive import AsyncResource, InteractiveTurnLoop
 from companion.runtime.turn import TurnController, TurnState
 from companion.tts.piper import PiperTTSProvider
+from companion.tts.elevenlabs import ElevenLabsTTSProvider, PCM_SAMPLE_RATES
 
 
 def default_piper_voice_root() -> Path:
@@ -36,6 +37,11 @@ class ApplicationConfig:
     openrouter_api_key: str | None = field(default=None, repr=False)
     openrouter_base_url: str = "https://openrouter.ai"
     openrouter_timeout: float = 30.0
+    elevenlabs_api_key: str | None = field(default=None, repr=False)
+    elevenlabs_base_url: str = "https://api.elevenlabs.io"
+    elevenlabs_timeout: float = 30.0
+    elevenlabs_model_id: str = "eleven_multilingual_v2"
+    elevenlabs_output_format: str = "pcm_24000"
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "piper_voice_root", Path(self.piper_voice_root))
@@ -123,6 +129,30 @@ def _build_piper(preference: TTSPreference, config: ApplicationConfig):
     )
 
 
+def _build_elevenlabs(preference: TTSPreference, config: ApplicationConfig):
+    _reject_settings("ElevenLabs", preference.settings)
+    if not config.elevenlabs_api_key:
+        raise CompositionError("ELEVENLABS_API_KEY is required for ElevenLabs")
+    if not config.elevenlabs_base_url:
+        raise CompositionError("ElevenLabs base URL is required")
+    if config.elevenlabs_timeout <= 0:
+        raise CompositionError("ElevenLabs timeout must be positive")
+    if not config.elevenlabs_model_id:
+        raise CompositionError("ElevenLabs model ID is required")
+    if config.elevenlabs_output_format not in PCM_SAMPLE_RATES:
+        raise CompositionError(
+            f"unsupported ElevenLabs PCM output format {config.elevenlabs_output_format!r}"
+        )
+    return ElevenLabsTTSProvider(
+        preference.voice,
+        config.elevenlabs_api_key,
+        model_id=config.elevenlabs_model_id,
+        base_url=config.elevenlabs_base_url,
+        timeout=config.elevenlabs_timeout,
+        output_format=config.elevenlabs_output_format,
+    )
+
+
 def create_default_llm_registry() -> LLMProviderRegistry[ApplicationConfig]:
     registry: LLMProviderRegistry[ApplicationConfig] = LLMProviderRegistry()
     registry.register("ollama", _build_ollama)
@@ -133,6 +163,7 @@ def create_default_llm_registry() -> LLMProviderRegistry[ApplicationConfig]:
 def create_default_tts_registry() -> TTSProviderRegistry[ApplicationConfig]:
     registry: TTSProviderRegistry[ApplicationConfig] = TTSProviderRegistry()
     registry.register("piper", _build_piper)
+    registry.register("elevenlabs", _build_elevenlabs)
     return registry
 
 
@@ -201,6 +232,10 @@ def compose_character_runtime(
     owned_resources: list[AsyncResource] = [source]
     if callable(getattr(llm, "close", None)):
         owned_resources.append(cast(AsyncResource, llm))
+    if callable(getattr(tts, "close", None)) and all(
+        resource is not tts for resource in owned_resources
+    ):
+        owned_resources.append(cast(AsyncResource, tts))
     loop = InteractiveTurnLoop(
         runtime,
         resources=owned_resources,

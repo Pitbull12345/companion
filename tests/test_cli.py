@@ -64,6 +64,7 @@ def test_character_application_loads_package_and_delegates_to_composition(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setenv("OPENROUTER_API_KEY", "environment-secret")
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "eleven-environment-secret")
     package = tmp_path / "character"
     package.mkdir()
     (package / "character.toml").write_text(
@@ -101,6 +102,10 @@ voice = "character-voice"
             "45",
             "--piper-voice-root",
             "/voices/piper",
+            "--elevenlabs-base-url",
+            "https://eleven.test",
+            "--elevenlabs-timeout",
+            "27",
         ]
     )
 
@@ -116,7 +121,11 @@ voice = "character-voice"
     assert config.ollama_timeout == 45
     assert config.piper_voice_root == Path("/voices/piper")
     assert config.openrouter_api_key == "environment-secret"
+    assert config.elevenlabs_api_key == "eleven-environment-secret"
+    assert config.elevenlabs_base_url == "https://eleven.test"
+    assert config.elevenlabs_timeout == 27
     assert "environment-secret" not in repr(config)
+    assert "eleven-environment-secret" not in repr(config)
     assert callbacks["on_listening"] is not None
     assert callbacks["on_turn_completed"] is not None
     assert callbacks["on_transition"] is not None
@@ -283,6 +292,49 @@ voice = "voice"
     error = capsys.readouterr().err
     assert (
         "Companion configuration error: OPENROUTER_API_KEY is required for OpenRouter"
+        in error
+    )
+    assert "Traceback" not in error
+
+
+def test_missing_elevenlabs_key_is_concise_without_starting_microphone(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
+    package = tmp_path / "character"
+    package.mkdir()
+    (package / "character.toml").write_text(
+        """
+id = "remote-voice"
+name = "Remote Voice"
+system_prompt = "Be concise."
+
+[llm]
+provider = "ollama"
+model = "local-model"
+
+[tts]
+provider = "elevenlabs"
+voice = "voice-id"
+"""
+    )
+
+    with pytest.raises(SystemExit) as raised:
+        main(
+            [
+                "--character",
+                str(package),
+                "--whisper-model",
+                "/models/whisper",
+            ]
+        )
+
+    assert raised.value.code == 1
+    error = capsys.readouterr().err
+    assert (
+        "Companion configuration error: ELEVENLABS_API_KEY is required for ElevenLabs"
         in error
     )
     assert "Traceback" not in error

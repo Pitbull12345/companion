@@ -1,6 +1,8 @@
 import asyncio
 from collections.abc import Sequence
 
+import pytest
+
 from companion.agent.context import ContextBuilder
 from companion.agent.conversation import ConversationManager
 from companion.agent.messages import Message, MessageRole
@@ -106,3 +108,35 @@ def test_complete_injected_speech_turn() -> None:
         TurnState.LISTENING,
     ]
     assert source.frames == []
+
+
+@pytest.mark.parametrize("provider_name", ["piper", "elevenlabs"])
+def test_state_observer_is_provider_neutral_across_tts_implementations(
+    provider_name: str,
+) -> None:
+    class RepresentativeTTS(FakeTTS):
+        name = provider_name
+
+    source = FakeAudioSource((AudioFrame(b"\0\0"),))
+    conversation = ConversationManager()
+    observed: list[TurnState] = []
+    runtime = AssistantRuntime(
+        audio_source=source,
+        vad=FakeVAD(),
+        stt=FakeSTT(b"\0\0"),
+        context_builder=ContextBuilder("Prompt", conversation, MemoryManager()),
+        llm=LLMRouter(FakeLLM()),
+        tts=RepresentativeTTS(),
+        audio_output=FakeAudioOutput(),
+        conversation=conversation,
+        turn_controller=TurnController(on_transition=observed.append),
+    )
+
+    asyncio.run(runtime.run_turn())
+
+    assert observed == [
+        TurnState.TRANSCRIBING,
+        TurnState.THINKING,
+        TurnState.SPEAKING,
+        TurnState.LISTENING,
+    ]
