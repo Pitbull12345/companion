@@ -92,6 +92,17 @@ def build_parser() -> argparse.ArgumentParser:
         default=str(default_piper_voice_root()),
         help="Directory containing installed Piper voices (default: %(default)s)",
     )
+    parser.add_argument(
+        "--elevenlabs-base-url",
+        default="https://api.elevenlabs.io",
+        help="ElevenLabs API base URL (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--elevenlabs-timeout",
+        type=float,
+        default=30.0,
+        help="ElevenLabs request timeout in seconds (default: %(default)s)",
+    )
     return parser
 
 
@@ -165,6 +176,9 @@ def build_application(arguments: argparse.Namespace) -> InteractiveTurnLoop | Ch
             openrouter_api_key=os.environ.get("OPENROUTER_API_KEY"),
             openrouter_base_url=arguments.openrouter_base_url,
             openrouter_timeout=arguments.openrouter_timeout,
+            elevenlabs_api_key=os.environ.get("ELEVENLABS_API_KEY"),
+            elevenlabs_base_url=arguments.elevenlabs_base_url,
+            elevenlabs_timeout=arguments.elevenlabs_timeout,
         ),
         on_listening=_show_listening,
         on_turn_completed=_show_turn,
