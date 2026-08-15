@@ -201,6 +201,15 @@ class CharacterApplication:
                         (name, str(path))
                         for name, path in sorted(self.character.visuals.items())
                     ),
+                    tuple(
+                        (
+                            name,
+                            tuple(str(frame) for frame in animation.frames),
+                            animation.fps,
+                            animation.loop,
+                        )
+                        for name, animation in sorted(self.character.animations.items())
+                    ),
                 )
             )
             self.events.publish(StateChanged(self.turn_controller.state))

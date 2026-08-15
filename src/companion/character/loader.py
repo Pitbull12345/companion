@@ -7,6 +7,7 @@ from types import MappingProxyType
 from typing import Any
 
 from companion.character.definition import (
+    AnimationDefinition,
     CharacterDefinition,
     LLMPreference,
     ProviderSetting,
@@ -27,7 +28,18 @@ _TOP_LEVEL_FIELDS = {
     "tts",
     "visuals",
     "sounds",
+    "animations",
 }
+_ANIMATION_KEYS = {
+    "idle",
+    "listening",
+    "transcribing",
+    "thinking",
+    "speaking",
+    "error",
+}
+_MAX_ANIMATION_FPS = 60.0
+_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 _SECRET_COMPONENTS = {
     "apikey",
     "password",
@@ -158,8 +170,66 @@ def _assets(value: Any, package_root: Path, section: str) -> Mapping[str, Path]:
     return MappingProxyType(resolved)
 
 
+def _animation_frame(package_root: Path, value: Any, name: str, index: int) -> Path:
+    label = f"animations.{name}.frames[{index}]"
+    path = _asset_path(package_root, value, f"animations.{name}.frames", str(index))
+    if path.suffix.casefold() != ".png":
+        raise CharacterError(f"{label} must reference a PNG file")
+    if not path.is_file():
+        raise CharacterError(f"{label} was not found or is not a regular file: {path}")
+    try:
+        with path.open("rb") as frame:
+            signature = frame.read(8)
+    except OSError as exc:
+        raise CharacterError(f"{label} could not be read: {path}") from exc
+    if signature != _PNG_SIGNATURE:
+        raise CharacterError(f"{label} is not a valid PNG file: {path}")
+    return path
+
+
+def _animations(
+    value: Any, package_root: Path
+) -> Mapping[str, AnimationDefinition]:
+    if value is None:
+        return MappingProxyType({})
+    if not isinstance(value, dict):
+        raise CharacterError("animations must be a TOML table")
+
+    definitions: dict[str, AnimationDefinition] = {}
+    for name, animation in value.items():
+        if name not in _ANIMATION_KEYS:
+            raise CharacterError(f"animations contains unsupported state {name!r}")
+        if not isinstance(animation, dict):
+            raise CharacterError(f"animations.{name} must be a TOML table")
+        _validate_table_fields(animation, {"frames", "fps", "loop"}, f"animations.{name}")
+        frames = animation.get("frames")
+        if not isinstance(frames, list) or not frames:
+            raise CharacterError(f"animations.{name}.frames must be a non-empty array")
+        fps = animation.get("fps")
+        if isinstance(fps, bool) or not isinstance(fps, (int, float)):
+            raise CharacterError(f"animations.{name}.fps must be a number")
+        numeric_fps = float(fps)
+        if not math.isfinite(numeric_fps) or not 0 < numeric_fps <= _MAX_ANIMATION_FPS:
+            raise CharacterError(
+                f"animations.{name}.fps must be finite and greater than 0 "
+                f"and at most {_MAX_ANIMATION_FPS:g}"
+            )
+        loop = animation.get("loop", True)
+        if not isinstance(loop, bool):
+            raise CharacterError(f"animations.{name}.loop must be a boolean")
+        definitions[name] = AnimationDefinition(
+            frames=tuple(
+                _animation_frame(package_root, frame, name, index)
+                for index, frame in enumerate(frames)
+            ),
+            fps=numeric_fps,
+            loop=loop,
+        )
+    return MappingProxyType(definitions)
+
+
 class CharacterLoader:
-    """Load metadata only; referenced asset existence is not required or opened."""
+    """Load portable metadata and strictly validate declared animation frames."""
 
     def load(self, package_directory: str | Path) -> CharacterDefinition:
         package_root = Path(package_directory).expanduser().resolve()
@@ -192,6 +262,7 @@ class CharacterLoader:
             tts=_tts_preference(data.get("tts")),
             visuals=_assets(data.get("visuals"), package_root, "visuals"),
             sounds=_assets(data.get("sounds"), package_root, "sounds"),
+            animations=_animations(data.get("animations"), package_root),
         )
 
 

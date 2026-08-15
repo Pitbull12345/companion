@@ -7,8 +7,9 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
 from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
 
-from companion.events import ApplicationError, ApplicationEvent
-from companion.frontend.model import FrontendError, PetPresentationModel
+from companion.events import ApplicationError, ApplicationEvent, CharacterLoaded
+from companion.frontend.animation import AnimationScheduler
+from companion.frontend.model import FrontendError, PetPresentationModel, PetVisualState
 from companion.frontend.observer import ScheduledEventObserver
 from companion.frontend.runtime_thread import RuntimeApplication, RuntimeWorker
 
@@ -26,17 +27,24 @@ class PetWindow(Gtk.ApplicationWindow):
         self._picture.set_can_shrink(True)
         self._picture.set_content_fit(Gtk.ContentFit.CONTAIN)
         self.set_child(self._picture)
+        self._textures: dict[Path, Gdk.Texture] = {}
 
         drag = Gtk.GestureClick(button=1)
         drag.connect("pressed", self._begin_move)
         self.add_controller(drag)
 
     def show_visual(self, path: Path) -> None:
-        try:
-            texture = Gdk.Texture.new_from_filename(str(path))
-        except GLib.Error as exc:
-            raise FrontendError(f"could not load character PNG: {path}") from exc
+        texture = self._textures.get(path)
+        if texture is None:
+            try:
+                texture = Gdk.Texture.new_from_filename(str(path))
+            except GLib.Error as exc:
+                raise FrontendError(f"could not load character PNG: {path}") from exc
+            self._textures[path] = texture
         self._picture.set_paintable(texture)
+
+    def clear_texture_cache(self) -> None:
+        self._textures.clear()
 
     def _begin_move(
         self, gesture: Gtk.GestureClick, presses: int, x: float, y: float
@@ -65,7 +73,7 @@ class GtkPetApplication(Gtk.Application):
         self._model = model or PetPresentationModel()
         self._window: PetWindow | None = None
         self._worker: RuntimeWorker | None = None
-        self._last_visual: Path | None = None
+        self._animation: AnimationScheduler | None = None
         self.observer = ScheduledEventObserver(self._schedule, self._consume_event)
 
     def attach_runtime(self, application: RuntimeApplication) -> None:
@@ -80,11 +88,18 @@ class GtkPetApplication(Gtk.Application):
             self._install_css()
             self._window = PetWindow(self)
             self._window.connect("close-request", self._window_closing)
+            self._animation = AnimationScheduler(
+                GLib.timeout_add,
+                GLib.source_remove,
+                self._window.show_visual,
+            )
         self._window.present()
         if not self._worker.started:
             self._worker.start()
 
     def do_shutdown(self) -> None:
+        if self._animation is not None:
+            self._animation.stop()
         if self._worker is not None:
             self._worker.cancel()
             self._worker.join()
@@ -92,6 +107,8 @@ class GtkPetApplication(Gtk.Application):
 
     def request_shutdown(self) -> None:
         """Request cancellation and let Gtk.Application own final cleanup."""
+        if self._animation is not None:
+            self._animation.stop()
         if self._worker is not None:
             self._worker.cancel()
         self.quit()
@@ -101,14 +118,17 @@ class GtkPetApplication(Gtk.Application):
 
     def _consume_event(self, event: ApplicationEvent) -> None:
         try:
-            visual = self._model.apply(event)
+            self._model.apply(event)
             if isinstance(event, ApplicationError):
                 print(f"Companion error: {event.message}", file=sys.stderr)
-            if visual is not None and visual != self._last_visual:
-                if self._window is None:
-                    raise FrontendError("character window is not ready")
-                self._window.show_visual(visual)
-                self._last_visual = visual
+            if self._window is None or self._animation is None:
+                raise FrontendError("character window is not ready")
+            if isinstance(event, CharacterLoaded):
+                self._window.clear_texture_cache()
+            self._animation.activate(
+                self._model.visual_asset,
+                animate=self._model.state is not PetVisualState.STOPPED,
+            )
         except FrontendError as exc:
             print(f"Companion frontend error: {exc}", file=sys.stderr)
             if self._worker is not None:
@@ -117,6 +137,8 @@ class GtkPetApplication(Gtk.Application):
 
     def _window_closing(self, window: PetWindow) -> bool:
         del window
+        if self._animation is not None:
+            self._animation.stop()
         if self._worker is not None:
             self._worker.cancel()
         return False

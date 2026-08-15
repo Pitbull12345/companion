@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from companion.character import AnimationDefinition
 from companion.events import (
     ApplicationError,
     ApplicationStopped,
@@ -26,6 +27,25 @@ def png(tmp_path: Path, name: str) -> Path:
 def loaded(tmp_path: Path, *keys: str) -> CharacterLoaded:
     visuals = tuple((key, str(png(tmp_path, f"{key}.png"))) for key in keys)
     return CharacterLoaded("amy", "Amy", visuals)
+
+
+def animated_loaded(
+    tmp_path: Path, *keys: str, visuals: tuple[str, ...] = ()
+) -> CharacterLoaded:
+    static = tuple((key, str(png(tmp_path, f"static-{key}.png"))) for key in visuals)
+    animations = tuple(
+        (
+            key,
+            (
+                str(png(tmp_path, f"{key}-0.png")),
+                str(png(tmp_path, f"{key}-1.png")),
+            ),
+            5.0,
+            True,
+        )
+        for key in keys
+    )
+    return CharacterLoaded("amy", "Amy", static, animations)
 
 
 def test_character_visuals_and_deterministic_fallbacks(tmp_path: Path) -> None:
@@ -127,7 +147,7 @@ def test_frontend_seam_selects_expected_visual_sequence(tmp_path: Path) -> None:
 
 def test_missing_idle_asset_is_concise(tmp_path: Path) -> None:
     model = PetPresentationModel()
-    with pytest.raises(FrontendError, match="requires a PNG visual named 'idle'"):
+    with pytest.raises(FrontendError, match="requires a PNG visual or animation"):
         model.apply(loaded(tmp_path, "thinking"))
 
 
@@ -157,3 +177,58 @@ def test_scheduled_observer_preserves_order_without_mutating_inline() -> None:
     for callback in pending:
         assert callback() is False
     assert consumed == events
+
+
+def test_animation_fallback_precedence_is_interleaved_and_deterministic(
+    tmp_path: Path,
+) -> None:
+    model = PetPresentationModel()
+    model.apply(
+        animated_loaded(
+            tmp_path,
+            "idle",
+            "listening",
+            visuals=("idle", "transcribing"),
+        )
+    )
+
+    model.apply(StateChanged(TurnState.LISTENING))
+    assert isinstance(model.visual_asset, AnimationDefinition)
+    assert model.visual_path == tmp_path / "listening-0.png"
+
+    model.apply(StateChanged(TurnState.TRANSCRIBING))
+    assert model.visual_asset == tmp_path / "static-transcribing.png"
+
+    model.apply(StateChanged(TurnState.THINKING))
+    assert isinstance(model.visual_asset, AnimationDefinition)
+    assert model.visual_path == tmp_path / "idle-0.png"
+
+
+def test_animation_event_sequence_preserves_audible_speaking_semantics(
+    tmp_path: Path,
+) -> None:
+    model = PetPresentationModel()
+    model.apply(
+        animated_loaded(tmp_path, "idle", "listening", "thinking", "speaking")
+    )
+
+    selected = []
+    for event in (
+        StateChanged(TurnState.LISTENING),
+        StateChanged(TurnState.THINKING),
+        StateChanged(TurnState.SPEAKING),
+        SpeechStarted(),
+        SpeechFinished(),
+        StateChanged(TurnState.LISTENING),
+    ):
+        model.apply(event)
+        selected.append(model.visual_path.name)
+
+    assert selected == [
+        "listening-0.png",
+        "thinking-0.png",
+        "thinking-0.png",
+        "speaking-0.png",
+        "listening-0.png",
+        "listening-0.png",
+    ]

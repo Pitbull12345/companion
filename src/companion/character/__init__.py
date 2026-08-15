@@ -1,4 +1,5 @@
 from companion.character.definition import (
+    AnimationDefinition,
     CharacterDefinition,
     LLMPreference,
     ProviderSetting,
@@ -8,6 +9,7 @@ from companion.character.errors import CharacterError
 from companion.character.loader import CharacterLoader, load_character
 
 __all__ = [
+    "AnimationDefinition",
     "CharacterDefinition",
     "CharacterError",
     "CharacterLoader",

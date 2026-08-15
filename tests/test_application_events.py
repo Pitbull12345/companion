@@ -23,7 +23,12 @@ from companion.application import (
     compose_character_runtime,
 )
 from companion.audio.interfaces import AudioClip, AudioFrame, AudioSegment
-from companion.character import CharacterDefinition, LLMPreference, TTSPreference
+from companion.character import (
+    AnimationDefinition,
+    CharacterDefinition,
+    LLMPreference,
+    TTSPreference,
+)
 from companion.llm.router import LLMRouter
 from companion.memory.manager import MemoryManager
 from companion.runtime.assistant import AssistantRuntime
@@ -111,8 +116,14 @@ def turn_event_signature(events):
 
 
 def test_event_values_are_immutable_and_safe() -> None:
-    event = CharacterLoaded("amy", "Amy", (("idle", "/characters/amy/idle.png"),))
+    event = CharacterLoaded(
+        "amy",
+        "Amy",
+        (("idle", "/characters/amy/idle.png"),),
+        (("idle", (("/characters/amy/idle-0.png"),), 6.0, True),),
+    )
     assert event.visuals == (("idle", "/characters/amy/idle.png"),)
+    assert event.animations[0][0] == "idle"
     with pytest.raises(FrozenInstanceError):
         event.character_name = "changed"  # type: ignore[misc]
 
@@ -353,6 +364,11 @@ def test_character_application_and_frontend_seam(tmp_path: Path) -> None:
         system_prompt="Prompt",
         package_root=tmp_path,
         visuals={"idle": tmp_path / "idle.png"},
+        animations={
+            "idle": AnimationDefinition(
+                (tmp_path / "idle-0.png", tmp_path / "idle-1.png"), 6.0
+            )
+        },
         llm=LLMPreference("fake-llm", "model"),
         tts=TTSPreference("fake-tts", "voice"),
     )
@@ -405,7 +421,17 @@ def test_character_application_and_frontend_seam(tmp_path: Path) -> None:
     asyncio.run(application.run())
 
     assert frontend.events[0] == CharacterLoaded(
-        "amy", "Amy", (("idle", str(tmp_path / "idle.png")),)
+        "amy",
+        "Amy",
+        (("idle", str(tmp_path / "idle.png")),),
+        (
+            (
+                "idle",
+                (str(tmp_path / "idle-0.png"), str(tmp_path / "idle-1.png")),
+                6.0,
+                True,
+            ),
+        ),
     )
     assert frontend.events[1] == StateChanged(TurnState.LISTENING)
     assert frontend.events[-2:] == [

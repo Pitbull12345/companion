@@ -16,6 +16,7 @@ class CharacterLoaded:
     character_id: str
     character_name: str
     visuals: tuple[tuple[str, str], ...] = ()
+    animations: tuple[tuple[str, tuple[str, ...], float, bool], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,4 +80,3 @@ class EventPublisher:
     def publish(self, event: ApplicationEvent) -> None:
         for observer in self._observers:
             observer.publish(event)
-

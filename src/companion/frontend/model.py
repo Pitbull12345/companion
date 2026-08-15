@@ -1,6 +1,8 @@
+import math
 from enum import Enum
 from pathlib import Path
 
+from companion.character import AnimationDefinition
 from companion.events import (
     ApplicationError,
     ApplicationEvent,
@@ -12,6 +14,7 @@ from companion.events import (
     StateChanged,
     TranscriptReady,
 )
+from companion.frontend.animation import VisualAsset
 from companion.runtime.turn import TurnState
 
 
@@ -51,24 +54,40 @@ class PetPresentationModel:
         self.response: str | None = None
         self.error_message: str | None = None
         self._visuals: dict[str, Path] = {}
+        self._animations: dict[str, AnimationDefinition] = {}
 
     @property
-    def visual_path(self) -> Path | None:
+    def visual_asset(self) -> VisualAsset | None:
         for key in _FALLBACKS[self.state]:
+            if key in self._animations:
+                return self._animations[key]
             if key in self._visuals:
                 return self._visuals[key]
         return None
 
+    @property
+    def visual_path(self) -> Path | None:
+        asset = self.visual_asset
+        if isinstance(asset, AnimationDefinition):
+            return asset.frames[0]
+        return asset
+
     def apply(self, event: ApplicationEvent) -> Path | None:
         if isinstance(event, CharacterLoaded):
             visuals = {name: self._validate_png(path, name) for name, path in event.visuals}
-            if "idle" not in visuals:
+            animations = {
+                name: self._validate_animation(name, frames, fps, loop)
+                for name, frames, fps, loop in event.animations
+            }
+            if "idle" not in visuals and "idle" not in animations:
                 raise FrontendError(
-                    f"character {event.character_id!r} requires a PNG visual named 'idle'"
+                    f"character {event.character_id!r} requires a PNG visual or "
+                    "animation named 'idle'"
                 )
             self.character_id = event.character_id
             self.character_name = event.character_name
             self._visuals = visuals
+            self._animations = animations
             self.state = PetVisualState.IDLE
         elif isinstance(event, StateChanged):
             mapped = {
@@ -109,3 +128,23 @@ class PetPresentationModel:
         if signature != b"\x89PNG\r\n\x1a\n":
             raise FrontendError(f"visual {name!r} is not a valid PNG file: {path}")
         return path
+
+    @classmethod
+    def _validate_animation(
+        cls, name: str, frames: tuple[str, ...], fps: float, loop: bool
+    ) -> AnimationDefinition:
+        if not frames:
+            raise FrontendError(f"animation {name!r} requires at least one frame")
+        if isinstance(fps, bool) or not isinstance(fps, (int, float)):
+            raise FrontendError(f"animation {name!r} FPS must be a number")
+        if not math.isfinite(fps) or not 0 < fps <= 60:
+            raise FrontendError(
+                f"animation {name!r} FPS must be finite, positive, and at most 60"
+            )
+        if not isinstance(loop, bool):
+            raise FrontendError(f"animation {name!r} loop must be a boolean")
+        return AnimationDefinition(
+            tuple(cls._validate_png(frame, f"{name} frame") for frame in frames),
+            float(fps),
+            loop,
+        )
