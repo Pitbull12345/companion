@@ -1,6 +1,5 @@
 import argparse
 import asyncio
-import os
 import sys
 from collections.abc import Sequence
 from typing import Protocol
@@ -12,10 +11,12 @@ from companion.audio.pipewire_output import PipeWireAudioOutput
 from companion.audio.pipewire_source import PipeWireAudioSource
 from companion.audio.silero_vad import SileroVADProvider
 from companion.application.composition import (
-    ApplicationConfig,
     CharacterApplication,
     compose_character_runtime,
-    default_piper_voice_root,
+)
+from companion.application.configuration import (
+    add_character_runtime_arguments,
+    application_config_from_arguments,
 )
 from companion.application.errors import CompositionError
 from companion.character.errors import CharacterError
@@ -38,40 +39,11 @@ def build_parser() -> argparse.ArgumentParser:
         prog="companion",
         description="Run Companion's local interactive speech loop.",
     )
-    parser.add_argument(
-        "--whisper-model",
-        required=False,
-        help="Path to an installed local faster-whisper model",
-    )
-    parser.add_argument(
-        "--character",
-        help="Path to a character package (uses its prompt, LLM model, and TTS voice)",
-    )
+    add_character_runtime_arguments(parser)
     parser.add_argument(
         "--ollama-model",
         required=False,
         help="Name of an already-installed Ollama model",
-    )
-    parser.add_argument(
-        "--ollama-host",
-        default="http://localhost:11434",
-        help="Ollama server URL (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--ollama-timeout",
-        type=float,
-        help="Optional Ollama request timeout in seconds",
-    )
-    parser.add_argument(
-        "--openrouter-base-url",
-        default="https://openrouter.ai",
-        help="OpenRouter API base URL (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--openrouter-timeout",
-        type=float,
-        default=30.0,
-        help="OpenRouter request timeout in seconds (default: %(default)s)",
     )
     parser.add_argument(
         "--piper-model",
@@ -86,22 +58,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--system-prompt",
         default=None,
         help="System prompt for the conversation",
-    )
-    parser.add_argument(
-        "--piper-voice-root",
-        default=str(default_piper_voice_root()),
-        help="Directory containing installed Piper voices (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--elevenlabs-base-url",
-        default="https://api.elevenlabs.io",
-        help="ElevenLabs API base URL (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--elevenlabs-timeout",
-        type=float,
-        default=30.0,
-        help="ElevenLabs request timeout in seconds (default: %(default)s)",
     )
     return parser
 
@@ -168,18 +124,7 @@ def build_application(arguments: argparse.Namespace) -> InteractiveTurnLoop | Ch
     character = load_character(arguments.character)
     return compose_character_runtime(
         character,
-        ApplicationConfig(
-            whisper_model_path=arguments.whisper_model,
-            ollama_host=arguments.ollama_host,
-            ollama_timeout=arguments.ollama_timeout,
-            piper_voice_root=arguments.piper_voice_root,
-            openrouter_api_key=os.environ.get("OPENROUTER_API_KEY"),
-            openrouter_base_url=arguments.openrouter_base_url,
-            openrouter_timeout=arguments.openrouter_timeout,
-            elevenlabs_api_key=os.environ.get("ELEVENLABS_API_KEY"),
-            elevenlabs_base_url=arguments.elevenlabs_base_url,
-            elevenlabs_timeout=arguments.elevenlabs_timeout,
-        ),
+        application_config_from_arguments(arguments),
         on_listening=_show_listening,
         on_turn_completed=_show_turn,
         on_transition=_show_state,
