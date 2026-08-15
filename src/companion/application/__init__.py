@@ -10,17 +10,41 @@ from companion.application.composition import (
     default_piper_voice_root,
 )
 from companion.application.errors import CompositionError
+from companion.application.events import (
+    ApplicationError,
+    ApplicationEvent,
+    ApplicationEventObserver,
+    ApplicationStopped,
+    CharacterLoaded,
+    EventPublisher,
+    ResponseReady,
+    SpeechFinished,
+    SpeechStarted,
+    StateChanged,
+    TranscriptReady,
+)
 from companion.application.registry import LLMProviderRegistry, TTSProviderRegistry
 
 __all__ = [
     "ApplicationConfig",
+    "ApplicationError",
+    "ApplicationEvent",
+    "ApplicationEventObserver",
+    "ApplicationStopped",
     "CharacterApplication",
     "CompositionError",
     "CompositionFactories",
+    "CharacterLoaded",
+    "EventPublisher",
     "LLMProviderRegistry",
     "PiperVoiceFiles",
     "PiperVoiceResolver",
+    "ResponseReady",
+    "SpeechFinished",
+    "SpeechStarted",
+    "StateChanged",
     "TTSProviderRegistry",
+    "TranscriptReady",
     "compose_character_runtime",
     "create_default_llm_registry",
     "create_default_tts_registry",

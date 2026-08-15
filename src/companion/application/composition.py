@@ -11,6 +11,13 @@ from companion.audio.pipewire_output import PipeWireAudioOutput
 from companion.audio.pipewire_source import PipeWireAudioSource
 from companion.audio.silero_vad import SileroVADProvider
 from companion.application.errors import CompositionError
+from companion.events import (
+    ApplicationEventObserver,
+    ApplicationStopped,
+    CharacterLoaded,
+    EventPublisher,
+    StateChanged,
+)
 from companion.application.registry import LLMProviderRegistry, TTSProviderRegistry
 from companion.character.definition import CharacterDefinition, LLMPreference, TTSPreference
 from companion.llm.ollama import OllamaLLMProvider
@@ -182,9 +189,35 @@ class CharacterApplication:
     loop: InteractiveTurnLoop
     conversation: ConversationManager
     turn_controller: TurnController
+    events: EventPublisher
 
     async def run(self) -> None:
-        await self.loop.run()
+        try:
+            self.events.publish(
+                CharacterLoaded(
+                    self.character.id,
+                    self.character.name,
+                    tuple(
+                        (name, str(path))
+                        for name, path in sorted(self.character.visuals.items())
+                    ),
+                )
+            )
+            self.events.publish(StateChanged(self.turn_controller.state))
+        except BaseException:
+            try:
+                await self.loop.close()
+            except BaseException:
+                # Startup publication is the primary failure. Cleanup is still
+                # attempted, but cannot replace the observer exception.
+                pass
+            raise
+        try:
+            await self.loop.run()
+        finally:
+            if self.turn_controller.state is not TurnState.STOPPED:
+                self.turn_controller.transition_to(TurnState.STOPPED)
+            self.events.publish(ApplicationStopped())
 
 
 def compose_character_runtime(
@@ -197,6 +230,7 @@ def compose_character_runtime(
     on_listening: Callable[[], None] | None = None,
     on_turn_completed: Callable[[TurnResult], None] | None = None,
     on_transition: Callable[[TurnState], None] | None = None,
+    event_observers: tuple[ApplicationEventObserver, ...] = (),
 ) -> CharacterApplication:
     if character.llm is None:
         raise CompositionError(f"character {character.id!r} has no LLM preference")
@@ -211,7 +245,16 @@ def compose_character_runtime(
     )
     builders = factories or CompositionFactories()
     conversation = ConversationManager()
-    controller = TurnController(on_transition=on_transition)
+    events = EventPublisher(event_observers)
+
+    def report_transition(state: TurnState) -> None:
+        events.publish(StateChanged(state))
+        # Preserve the legacy turn-progress callback, which historically
+        # described only turn transitions and did not receive application stop.
+        if on_transition is not None and state is not TurnState.STOPPED:
+            on_transition(state)
+
+    controller = TurnController(on_transition=report_transition)
     vad = builders.vad()
     stt = builders.stt(str(config.whisper_model_path))
     output = builders.audio_output()
@@ -228,6 +271,7 @@ def compose_character_runtime(
         audio_output=output,
         conversation=conversation,
         turn_controller=controller,
+        event_observer=events,
     )
     owned_resources: list[AsyncResource] = [source]
     if callable(getattr(llm, "close", None)):
@@ -242,4 +286,4 @@ def compose_character_runtime(
         on_listening=on_listening,
         on_turn_completed=on_turn_completed,
     )
-    return CharacterApplication(character, runtime, loop, conversation, controller)
+    return CharacterApplication(character, runtime, loop, conversation, controller, events)
